@@ -40,7 +40,7 @@ Remove-Item Env:ANDROID_PREFS_ROOT -ErrorAction SilentlyContinue
 - `VERSION_NAME` попадает в `versionName`;
 - `VERSION_CODE` попадает в `versionCode`.
 
-Перед новой публикацией увеличьте версию:
+Перед новой публикацией можно увеличить версию отдельно:
 
 ```powershell
 .\scripts\bump-version.ps1 patch
@@ -50,9 +50,10 @@ Remove-Item Env:ANDROID_PREFS_ROOT -ErrorAction SilentlyContinue
 
 Workflow `.github/workflows/android-release.yml` собирает APK при push тега `v*` и публикует GitHub Release уже с прикрепленным APK. APK будет называться `WLTest-<VERSION_NAME>-<VERSION_CODE>.apk`.
 
-Публикация релиза:
+Полная публикация новой версии одной командой:
 
 ```powershell
-git tag -a v1.0.1 -m "WLTest v1.0.1"
-git push origin v1.0.1
+.\scripts\release.ps1 patch
 ```
+
+Скрипт `release.ps1` поднимает `VERSION_NAME`/`VERSION_CODE`, делает commit, создает tag `v<VERSION_NAME>`, пушит ветку и tag на GitHub. После push тега GitHub Actions создает release и сразу прикрепляет APK.

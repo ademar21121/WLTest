@@ -42,6 +42,16 @@ jobs:
           echo "VERSION_NAME=$(grep '^VERSION_NAME=' gradle.properties | cut -d= -f2)" >> "$GITHUB_ENV"
           echo "RELEASE_TAG=${GITHUB_REF_NAME:-v$(grep '^VERSION_NAME=' gradle.properties | cut -d= -f2)}" >> "$GITHUB_ENV"
 
+      - name: Validate release tag
+        shell: bash
+        run: |
+          expected="v${VERSION_NAME}"
+          if [ "${RELEASE_TAG}" != "${expected}" ]; then
+            echo "Release tag ${RELEASE_TAG} does not match VERSION_NAME ${VERSION_NAME}."
+            echo "Expected tag: ${expected}"
+            exit 1
+          fi
+
       - name: Build APK
         run: gradle assembleDebug
 
