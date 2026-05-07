@@ -193,8 +193,10 @@ public class MainActivity extends Activity {
 
     private void startCheck() {
         checking = true;
+        clearLog();
         completedResults.clear();
         final List<Checker> checkers = loadCheckers();
+        appendLog("start checkers=" + checkers.size());
         renderRows(checkers);
         verdictView.setText("Проверка WL...");
         interfaceView.setText("Ищу мобильный интерфейс");
@@ -213,6 +215,7 @@ public class MainActivity extends Activity {
         ConnectivityManager connectivityManager =
                 (ConnectivityManager) getSystemService(CONNECTIVITY_SERVICE);
         if (connectivityManager == null) {
+            appendLog("ConnectivityManager is null");
             finishWithError("ConnectivityManager недоступен");
             return;
         }
@@ -222,22 +225,31 @@ public class MainActivity extends Activity {
             lease = awaitCellularNetwork(connectivityManager);
         } catch (InterruptedException e) {
             Thread.currentThread().interrupt();
+            appendLog("await cellular interrupted");
             finishWithError("Проверка прервана");
             return;
         }
 
         if (lease == null) {
+            appendLog("cellular network not found");
             finishWithError("Мобильный интерфейс не найден");
             return;
         }
 
+        Network previousNetwork = connectivityManager.getBoundNetworkForProcess();
+        boolean boundToCellular = connectivityManager.bindProcessToNetwork(lease.network);
+        appendLog("cellular network=" + lease.network + " interface=" + lease.interfaceName
+                + " bindProcessToNetwork=" + boundToCellular);
+
         try {
             if (!NativeCurlBridge.isLoaded()) {
+                appendLog("native curl load error=" + NativeCurlBridge.loadErrorMessage());
                 finishWithError("native curl не загружен: " + NativeCurlBridge.loadErrorMessage());
                 return;
             }
 
             final String caPath = CaBundleInstaller.ensureInstalled(this);
+            appendLog("caBundle=" + caPath);
             runOnUiThread(new Runnable() {
                 @Override
                 public void run() {
@@ -246,6 +258,7 @@ public class MainActivity extends Activity {
             });
 
             final CountDownLatch done = new CountDownLatch(checkers.size());
+            final long startedAt = System.currentTimeMillis();
             for (int i = 0; i < checkers.size(); i++) {
                 final int index = i;
                 final Checker checker = checkers.get(i);
@@ -263,8 +276,11 @@ public class MainActivity extends Activity {
                 });
             }
 
-            done.await(REQUEST_TIMEOUT_MS + 5000L, TimeUnit.MILLISECONDS);
+            boolean allDone = done.await(REQUEST_TIMEOUT_MS + 5000L, TimeUnit.MILLISECONDS);
+            appendLog("finished allDone=" + allDone + " elapsedMs=" + (System.currentTimeMillis() - startedAt)
+                    + " completed=" + completedResults.size() + "/" + checkers.size());
             final String verdict = calculateVerdict(checkers, new ArrayList<>(completedResults));
+            appendLog("verdict=" + verdict);
             runOnUiThread(new Runnable() {
                 @Override
                 public void run() {
@@ -272,8 +288,11 @@ public class MainActivity extends Activity {
                 }
             });
         } catch (Exception e) {
+            appendLog("check failed: " + (e.getMessage() == null ? e.getClass().getSimpleName() : e.getMessage()));
             finishWithError(e.getMessage() == null ? e.getClass().getSimpleName() : e.getMessage());
         } finally {
+            connectivityManager.bindProcessToNetwork(previousNetwork);
+            appendLog("process network restored=" + previousNetwork);
             lease.close();
         }
     }
@@ -282,6 +301,9 @@ public class MainActivity extends Activity {
         String normalizedUrl = normalizeUrl(checker.value);
         String host = hostFromUrl(normalizedUrl);
         String[] resolveRules = buildResolveRules(lease.network, normalizedUrl, host);
+        appendLog("request " + checker.category.title() + " " + normalizedUrl
+                + " host=" + host + " iface=" + lease.interfaceName
+                + " resolve=" + join(resolveRules));
         NativeCurlBridge.ProbeResponse response = NativeCurlBridge.execute(
                 normalizedUrl,
                 lease.interfaceName,
@@ -295,11 +317,14 @@ public class MainActivity extends Activity {
             if (!response.primaryIp.isEmpty()) {
                 detail += " / " + response.primaryIp;
             }
+            appendLog("result OK " + checker.displayName() + " " + detail);
             return new SiteResult(checker, true, detail);
         }
         String detail = response.httpCode > 0
                 ? "HTTP " + response.httpCode
                 : "curl " + response.curlCode + (response.error.isEmpty() ? "" : ": " + response.error);
+        appendLog("result FAIL " + checker.displayName() + " " + detail
+                + " primaryIp=" + response.primaryIp);
         return new SiteResult(checker, false, detail);
     }
 
@@ -311,6 +336,7 @@ public class MainActivity extends Activity {
         try {
             InetAddress[] addresses = network.getAllByName(host);
             if (addresses == null || addresses.length == 0) {
+                appendLog("dns empty host=" + host);
                 return new String[0];
             }
             StringBuilder builder = new StringBuilder();
@@ -322,7 +348,9 @@ public class MainActivity extends Activity {
                 builder.append(addresses[i].getHostAddress());
             }
             return new String[]{builder.toString()};
-        } catch (Exception ignored) {
+        } catch (Exception error) {
+            appendLog("dns error host=" + host + " " + error.getClass().getSimpleName()
+                    + ": " + (error.getMessage() == null ? "" : error.getMessage()));
             return new String[0];
         }
     }
@@ -353,6 +381,71 @@ public class MainActivity extends Activity {
         checkButton.setChecking(false);
         checkButton.setText("Проверить\nWL");
         verdictView.setText(verdict);
+    }
+
+    private void clearLog() {
+        synchronized (logBuffer) {
+            logBuffer.setLength(0);
+        }
+    }
+
+    private void appendLog(String message) {
+        synchronized (logBuffer) {
+            logBuffer.append(System.currentTimeMillis())
+                    .append(" | ")
+                    .append(message == null ? "" : message)
+                    .append('\n');
+        }
+    }
+
+    private String currentLog() {
+        synchronized (logBuffer) {
+            return logBuffer.toString();
+        }
+    }
+
+    private String join(String[] values) {
+        if (values == null || values.length == 0) {
+            return "-";
+        }
+        StringBuilder builder = new StringBuilder();
+        for (String value : values) {
+            if (builder.length() > 0) {
+                builder.append("; ");
+            }
+            builder.append(value);
+        }
+        return builder.toString();
+    }
+
+    private void showLogDialog() {
+        final String logText = currentLog().isEmpty() ? "Лог пока пуст" : currentLog();
+        TextView logView = new TextView(this);
+        logView.setText(logText);
+        logView.setTextColor(COLOR_TEXT);
+        logView.setTextSize(12);
+        logView.setPadding(dp(14), dp(12), dp(14), dp(12));
+        logView.setTextIsSelectable(true);
+
+        ScrollView scrollView = new ScrollView(this);
+        scrollView.addView(logView);
+
+        new AlertDialog.Builder(this, AlertDialog.THEME_DEVICE_DEFAULT_DARK)
+                .setTitle("Лог проверки")
+                .setView(scrollView)
+                .setPositiveButton("Копировать", new DialogInterface.OnClickListener() {
+                    @Override
+                    public void onClick(DialogInterface dialogInterface, int i) {
+                        ClipboardManager clipboard =
+                                (ClipboardManager) getSystemService(CLIPBOARD_SERVICE);
+                        if (clipboard != null) {
+                            clipboard.setPrimaryClip(ClipData.newPlainText("WLTest log", logText));
+                            Toast.makeText(MainActivity.this, "Лог скопирован", Toast.LENGTH_SHORT).show();
+                        }
+                    }
+                })
+                .setNegativeButton("Закрыть", null)
+                .show();
     }
 
     private String calculateVerdict(List<Checker> checkers, List<SiteResult> results) {
@@ -392,7 +485,13 @@ public class MainActivity extends Activity {
     private void renderRows(List<Checker> checkers) {
         rows.clear();
         table.removeAllViews();
+        Category previousCategory = null;
         for (Checker checker : checkers) {
+            if (checker.category != previousCategory) {
+                addCategoryHeader(checker.category);
+                previousCategory = checker.category;
+            }
+
             LinearLayout row = new LinearLayout(this);
             row.setOrientation(LinearLayout.HORIZONTAL);
             row.setGravity(Gravity.CENTER_VERTICAL);
@@ -417,6 +516,20 @@ public class MainActivity extends Activity {
             ));
             rows.add(new CheckerRow(result));
         }
+    }
+
+    private void addCategoryHeader(Category category) {
+        TextView header = new TextView(this);
+        header.setText(category.title());
+        header.setTextColor(COLOR_ACCENT);
+        header.setTextSize(13);
+        header.setGravity(Gravity.LEFT);
+        header.setPadding(dp(14), dp(12), dp(14), dp(7));
+        header.setBackgroundColor(Color.rgb(18, 24, 34));
+        table.addView(header, new LinearLayout.LayoutParams(
+                ViewGroup.LayoutParams.MATCH_PARENT,
+                ViewGroup.LayoutParams.WRAP_CONTENT
+        ));
     }
 
     private CellularLease awaitCellularNetwork(ConnectivityManager connectivityManager)
@@ -661,7 +774,11 @@ public class MainActivity extends Activity {
 
     private enum Category {
         RU,
-        NON_RU
+        NON_RU;
+
+        String title() {
+            return this == RU ? "RU чекеры" : "не RU чекеры";
+        }
     }
 
     private static final class Checker {
