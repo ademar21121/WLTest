@@ -1,16 +1,26 @@
 #include <curl/curl.h>
 #include <jni.h>
+#include <android/multinetwork.h>
 
 #include <algorithm>
 #include <cctype>
+#include <cerrno>
+#include <cstring>
 #include <mutex>
 #include <string>
 #include <vector>
+#include <sys/socket.h>
+#include <unistd.h>
 
 namespace {
 
 constexpr jint kResultSize = 6;
 std::once_flag g_curl_init_once;
+
+struct SocketBindState {
+  net_handle_t network_handle = 0;
+  std::string error;
+};
 
 struct CurlExecutionResult {
   CURLcode curl_code = CURLE_OK;
@@ -79,9 +89,32 @@ std::string AddressesFromResolveRule(const std::string& rule) {
   return rule.substr(second + 1);
 }
 
+curl_socket_t OpenSocketCallback(void* clientp, curlsocktype /* purpose */, curl_sockaddr* address) {
+  auto* state = static_cast<SocketBindState*>(clientp);
+  curl_socket_t socket_fd = socket(address->family, address->socktype, address->protocol);
+  if (socket_fd == CURL_SOCKET_BAD) {
+    if (state != nullptr) {
+      state->error = std::string("socket failed: ") + std::strerror(errno);
+    }
+    return CURL_SOCKET_BAD;
+  }
+
+  if (state != nullptr && state->network_handle != 0) {
+    const int bind_result = android_setsocknetwork(state->network_handle, socket_fd);
+    if (bind_result != 0) {
+      state->error = "android_setsocknetwork failed: " + std::to_string(bind_result);
+      close(socket_fd);
+      return CURL_SOCKET_BAD;
+    }
+  }
+
+  return socket_fd;
+}
+
 CurlExecutionResult ExecuteRequest(
     const std::string& url,
     const std::string& interface_name,
+    jlong network_handle,
     const std::string& method,
     const std::vector<std::string>& headers,
     const std::vector<std::string>& resolve_rules,
@@ -129,9 +162,17 @@ CurlExecutionResult ExecuteRequest(
   char error_buffer[CURL_ERROR_SIZE] = {0};
   std::string response_body;
   const std::string interface_option = "if!" + interface_name;
+  SocketBindState socket_bind_state;
+  socket_bind_state.network_handle = static_cast<net_handle_t>(network_handle);
+  const bool use_android_network_binding = socket_bind_state.network_handle != 0;
 
   curl_easy_setopt(handle, CURLOPT_URL, url.c_str());
-  curl_easy_setopt(handle, CURLOPT_INTERFACE, interface_option.c_str());
+  if (use_android_network_binding) {
+    curl_easy_setopt(handle, CURLOPT_OPENSOCKETFUNCTION, OpenSocketCallback);
+    curl_easy_setopt(handle, CURLOPT_OPENSOCKETDATA, &socket_bind_state);
+  } else {
+    curl_easy_setopt(handle, CURLOPT_INTERFACE, interface_option.c_str());
+  }
   curl_easy_setopt(handle, CURLOPT_FOLLOWLOCATION, follow_redirects ? 1L : 0L);
   curl_easy_setopt(handle, CURLOPT_NOSIGNAL, 1L);
   curl_easy_setopt(handle, CURLOPT_TIMEOUT_MS, static_cast<long>(timeout_ms));
@@ -170,6 +211,9 @@ CurlExecutionResult ExecuteRequest(
   if (result.error_buffer.empty() && result.curl_code != CURLE_OK) {
     result.error_buffer = curl_easy_strerror(result.curl_code);
   }
+  if (!socket_bind_state.error.empty()) {
+    result.local_error = socket_bind_state.error;
+  }
 
   curl_slist_free_all(header_list);
   curl_slist_free_all(resolve_list);
@@ -185,6 +229,7 @@ Java_com_wltest_probe_NativeCurlBridge_nativeExecuteRaw(
     jclass /* clazz */,
     jstring url,
     jstring interface_name,
+    jlong network_handle,
     jstring method,
     jobjectArray headers,
     jstring /* body */,
@@ -222,6 +267,7 @@ Java_com_wltest_probe_NativeCurlBridge_nativeExecuteRaw(
   const CurlExecutionResult result = ExecuteRequest(
       JStringToStdString(env, url),
       JStringToStdString(env, interface_name),
+      network_handle,
       JStringToStdString(env, method),
       parsed_headers,
       parsed_rules,

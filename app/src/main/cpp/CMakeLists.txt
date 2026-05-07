@@ -65,5 +65,6 @@ target_link_libraries(
     mbedcrypto
     mbedtls
     mbedx509
+    android
     log
 )

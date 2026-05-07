@@ -239,6 +239,7 @@ public class MainActivity extends Activity {
         Network previousNetwork = connectivityManager.getBoundNetworkForProcess();
         boolean boundToCellular = connectivityManager.bindProcessToNetwork(lease.network);
         appendLog("cellular network=" + lease.network + " interface=" + lease.interfaceName
+                + " handle=" + lease.network.getNetworkHandle()
                 + " bindProcessToNetwork=" + boundToCellular);
 
         try {
@@ -303,10 +304,12 @@ public class MainActivity extends Activity {
         String[] resolveRules = buildResolveRules(lease.network, normalizedUrl, host);
         appendLog("request " + checker.category.title() + " " + normalizedUrl
                 + " host=" + host + " iface=" + lease.interfaceName
+                + " handle=" + lease.network.getNetworkHandle()
                 + " resolve=" + join(resolveRules));
         NativeCurlBridge.ProbeResponse response = NativeCurlBridge.execute(
                 normalizedUrl,
                 lease.interfaceName,
+                lease.network.getNetworkHandle(),
                 REQUEST_TIMEOUT_MS,
                 caPath,
                 resolveRules

@@ -33,6 +33,7 @@ public final class NativeCurlBridge {
     public static ProbeResponse execute(
             String url,
             String interfaceName,
+            long networkHandle,
             int timeoutMs,
             String caBundlePath,
             String[] resolveRules
@@ -44,6 +45,7 @@ public final class NativeCurlBridge {
         String[] raw = nativeExecuteRaw(
                 url,
                 interfaceName,
+                networkHandle,
                 "GET",
                 new String[]{"User-Agent: WLTest/1.0 Android"},
                 "",
@@ -64,6 +66,7 @@ public final class NativeCurlBridge {
     private static native String[] nativeExecuteRaw(
             String url,
             String interfaceName,
+            long networkHandle,
             String method,
             String[] headers,
             String body,
