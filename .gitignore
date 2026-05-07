@@ -1,0 +1,10 @@
+.gradle/
+.gradle-user/
+.android-user/
+.home/
+build/
+app/build/
+app/.cxx/
+manual-build/
+manual-java-check/
+local.properties

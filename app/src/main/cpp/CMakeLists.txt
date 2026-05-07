@@ -1,0 +1,69 @@
+cmake_minimum_required(VERSION 3.22.1)
+
+project(native_curl_probe LANGUAGES C CXX)
+
+include(FetchContent)
+
+set(CMAKE_C_STANDARD 11)
+set(CMAKE_C_STANDARD_REQUIRED ON)
+set(CMAKE_CXX_STANDARD 17)
+set(CMAKE_CXX_STANDARD_REQUIRED ON)
+
+set(BUILD_SHARED_LIBS OFF CACHE BOOL "" FORCE)
+set(BUILD_STATIC_LIBS ON CACHE BOOL "" FORCE)
+set(FETCHCONTENT_UPDATES_DISCONNECTED OFF CACHE BOOL "" FORCE)
+
+FetchContent_Declare(
+    mbedtls
+    URL https://github.com/Mbed-TLS/mbedtls/archive/refs/tags/v3.6.3.zip
+)
+
+set(ENABLE_PROGRAMS OFF CACHE BOOL "" FORCE)
+set(ENABLE_TESTING OFF CACHE BOOL "" FORCE)
+set(MBEDTLS_FATAL_WARNINGS OFF CACHE BOOL "" FORCE)
+FetchContent_MakeAvailable(mbedtls)
+
+set(MBEDTLS_USE_STATIC_LIBS ON CACHE BOOL "" FORCE)
+set(MBEDTLS_INCLUDE_DIR "${mbedtls_SOURCE_DIR}/include" CACHE PATH "" FORCE)
+set(MBEDTLS_LIBRARY "mbedtls" CACHE STRING "" FORCE)
+set(MBEDX509_LIBRARY "mbedx509" CACHE STRING "" FORCE)
+set(MBEDCRYPTO_LIBRARY "mbedcrypto" CACHE STRING "" FORCE)
+
+FetchContent_Declare(
+    curl
+    URL https://github.com/curl/curl/archive/refs/tags/curl-8_19_0.zip
+)
+
+set(BUILD_CURL_EXE OFF CACHE BOOL "" FORCE)
+set(CURL_DISABLE_INSTALL ON CACHE BOOL "" FORCE)
+set(CURL_ENABLE_SSL ON CACHE BOOL "" FORCE)
+set(CURL_USE_MBEDTLS ON CACHE BOOL "" FORCE)
+set(CURL_USE_OPENSSL OFF CACHE BOOL "" FORCE)
+set(CURL_USE_LIBPSL OFF CACHE BOOL "" FORCE)
+set(ENABLE_ARES OFF CACHE BOOL "" FORCE)
+set(USE_NGHTTP2 OFF CACHE BOOL "" FORCE)
+set(HTTP_ONLY ON CACHE BOOL "" FORCE)
+set(BUILD_TESTING OFF CACHE BOOL "" FORCE)
+set(CURL_BUILD_TESTS OFF CACHE BOOL "" FORCE)
+FetchContent_MakeAvailable(curl)
+
+add_library(native_curl_probe SHARED native_curl_probe.cpp)
+
+target_include_directories(
+    native_curl_probe
+    PRIVATE
+    ${curl_SOURCE_DIR}/include
+    ${mbedtls_SOURCE_DIR}/include
+)
+
+target_compile_definitions(native_curl_probe PRIVATE CURL_STATICLIB)
+
+target_link_libraries(
+    native_curl_probe
+    PRIVATE
+    libcurl
+    mbedcrypto
+    mbedtls
+    mbedx509
+    log
+)
