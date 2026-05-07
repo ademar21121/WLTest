@@ -24,7 +24,28 @@
 Сборка в Android Studio или через установленный Gradle:
 
 ```powershell
-gradle assembleDebug
+$env:GRADLE_USER_HOME='C:\WLChecker\.gradle-user'
+$env:ANDROID_USER_HOME='C:\WLChecker\.android-user'
+$env:ANDROID_HOME='C:\Users\Nekohime\AppData\Local\Android\Sdk'
+Remove-Item Env:ANDROID_PREFS_ROOT -ErrorAction SilentlyContinue
+& 'C:\Users\Nekohime\.gradle\wrapper\dists\gradle-9.3.1-bin\23ovyewtku6u96viwx3xl3oks\gradle-9.3.1\bin\gradle.bat' assembleDebug
 ```
 
 В текущем проекте CMake загружает `curl` и `mbedtls` через `FetchContent`, поэтому при первой сборке нужен доступ к GitHub.
+
+## Версии и GitHub Release
+
+Номер версии хранится в `gradle.properties`:
+
+- `VERSION_NAME` попадает в `versionName`;
+- `VERSION_CODE` попадает в `versionCode`.
+
+Перед новой публикацией увеличьте версию:
+
+```powershell
+.\scripts\bump-version.ps1 patch
+```
+
+Доступные значения: `patch`, `minor`, `major`.
+
+Workflow `.github/workflows/android-release.yml` собирает APK при push в `master`/`main` и публикует GitHub Release с тегом `v<VERSION_NAME>`. APK будет называться `WLTest-<VERSION_NAME>-<VERSION_CODE>.apk`.
