@@ -12,11 +12,9 @@ param(
 $ErrorActionPreference = "Stop"
 
 function Invoke-Git {
-    param([Parameter(ValueFromRemainingArguments = $true)] [string[]] $Arguments)
-
-    & git @Arguments
+    & git @args
     if ($LASTEXITCODE -ne 0) {
-        throw "git $($Arguments -join ' ') failed"
+        throw "git $($args -join ' ') failed"
     }
 }
 
@@ -42,6 +40,9 @@ function Test-LocalTagExists {
 function Test-RemoteTagExists {
     param([string] $Tag)
     $output = & git ls-remote --tags $Remote $Tag
+    if ($LASTEXITCODE -ne 0) {
+        throw "Cannot query remote tags from $Remote. Check GitHub credentials and remote URL."
+    }
     return -not [string]::IsNullOrWhiteSpace(($output -join "").Trim())
 }
 
@@ -99,7 +100,13 @@ if ($null -eq $after -or (Test-LocalTagExists $after.Tag) -or (Test-RemoteTagExi
 Write-Output "New version: $($after.Name) ($($after.Code))"
 
 Invoke-Git add gradle.properties
-Invoke-Git commit -m "Bump version to $($after.Name)"
+$staged = @(& git diff --cached --name-only)
+if ($staged -contains "gradle.properties") {
+    Invoke-Git commit -m "Bump version to $($after.Name)"
+} else {
+    Write-Output "gradle.properties is already committed."
+}
+
 Invoke-Git tag -a $after.Tag -m "WLTest $($after.Tag)"
 Invoke-Git push $Remote $Branch
 Invoke-Git push $Remote $after.Tag
