@@ -2,9 +2,8 @@ name: Android release
 
 on:
   push:
-    branches:
-      - master
-      - main
+    tags:
+      - "v*"
   workflow_dispatch:
 
 permissions:
@@ -41,6 +40,7 @@ jobs:
         run: |
           echo "VERSION_CODE=$(grep '^VERSION_CODE=' gradle.properties | cut -d= -f2)" >> "$GITHUB_ENV"
           echo "VERSION_NAME=$(grep '^VERSION_NAME=' gradle.properties | cut -d= -f2)" >> "$GITHUB_ENV"
+          echo "RELEASE_TAG=${GITHUB_REF_NAME:-v$(grep '^VERSION_NAME=' gradle.properties | cut -d= -f2)}" >> "$GITHUB_ENV"
 
       - name: Build APK
         run: gradle assembleDebug
@@ -54,8 +54,8 @@ jobs:
       - name: Publish GitHub Release
         uses: softprops/action-gh-release@v2
         with:
-          tag_name: v${{ env.VERSION_NAME }}
-          name: WLTest v${{ env.VERSION_NAME }}
+          tag_name: ${{ env.RELEASE_TAG }}
+          name: WLTest ${{ env.RELEASE_TAG }}
           body: |
             Version name: ${{ env.VERSION_NAME }}
             Version code: ${{ env.VERSION_CODE }}

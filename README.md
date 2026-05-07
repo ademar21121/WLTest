@@ -48,4 +48,11 @@ Remove-Item Env:ANDROID_PREFS_ROOT -ErrorAction SilentlyContinue
 
 Доступные значения: `patch`, `minor`, `major`.
 
-Workflow `.github/workflows/android-release.yml` собирает APK при push в `master`/`main` и публикует GitHub Release с тегом `v<VERSION_NAME>`. APK будет называться `WLTest-<VERSION_NAME>-<VERSION_CODE>.apk`.
+Workflow `.github/workflows/android-release.yml` собирает APK при push тега `v*` и публикует GitHub Release уже с прикрепленным APK. APK будет называться `WLTest-<VERSION_NAME>-<VERSION_CODE>.apk`.
+
+Публикация релиза:
+
+```powershell
+git tag -a v1.0.1 -m "WLTest v1.0.1"
+git push origin v1.0.1
+```
