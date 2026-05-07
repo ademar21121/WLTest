@@ -4,7 +4,9 @@ param(
 
     [string] $Remote = "origin",
 
-    [string] $Branch = ""
+    [string] $Branch = "",
+
+    [switch] $Continue
 )
 
 $ErrorActionPreference = "Stop"
@@ -33,12 +35,14 @@ function Read-Version {
 
 function Test-LocalTagExists {
     param([string] $Tag)
-    return -not [string]::IsNullOrWhiteSpace((& git tag --list $Tag).Trim())
+    $output = & git tag --list $Tag
+    return -not [string]::IsNullOrWhiteSpace(($output -join "").Trim())
 }
 
 function Test-RemoteTagExists {
     param([string] $Tag)
-    return -not [string]::IsNullOrWhiteSpace((& git ls-remote --tags $Remote $Tag))
+    $output = & git ls-remote --tags $Remote $Tag
+    return -not [string]::IsNullOrWhiteSpace(($output -join "").Trim())
 }
 
 $repoRoot = Resolve-Path (Join-Path $PSScriptRoot "..")
@@ -53,28 +57,39 @@ if ([string]::IsNullOrWhiteSpace($Branch)) {
     throw "Cannot determine current branch"
 }
 
-$status = (& git status --porcelain)
-if ($status) {
+$status = @(& git status --porcelain)
+if ($status -and -not $Continue) {
     throw "Working tree is not clean. Commit or discard changes before release."
+}
+if ($Continue) {
+    $unexpected = @($status | Where-Object { $_ -notmatch "^\s*M\s+gradle\.properties$" })
+    if ($unexpected.Count -gt 0) {
+        throw "Continue mode allows only modified gradle.properties. Current changes: $($unexpected -join '; ')"
+    }
 }
 
 $before = Read-Version
 Write-Output "Current version: $($before.Name) ($($before.Code))"
 
-$after = $null
-for ($attempt = 0; $attempt -lt 20; $attempt++) {
-    & (Join-Path $PSScriptRoot "bump-version.ps1") $Part
-    if ($LASTEXITCODE -ne 0) {
-        throw "Version bump failed"
-    }
+$after = $before
+if (-not $Continue) {
+    $after = $null
+    for ($attempt = 0; $attempt -lt 20; $attempt++) {
+        & (Join-Path $PSScriptRoot "bump-version.ps1") $Part
+        if ($LASTEXITCODE -ne 0) {
+            throw "Version bump failed"
+        }
 
+        $after = Read-Version
+        if ((Test-LocalTagExists $after.Tag) -or (Test-RemoteTagExists $after.Tag)) {
+            Write-Output "Tag $($after.Tag) already exists, bumping again."
+            continue
+        }
+
+        break
+    }
+} else {
     $after = Read-Version
-    if ((Test-LocalTagExists $after.Tag) -or (Test-RemoteTagExists $after.Tag)) {
-        Write-Output "Tag $($after.Tag) already exists, bumping again."
-        continue
-    }
-
-    break
 }
 
 if ($null -eq $after -or (Test-LocalTagExists $after.Tag) -or (Test-RemoteTagExists $after.Tag)) {
