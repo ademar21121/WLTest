@@ -6,7 +6,9 @@ param(
 
     [string] $Branch = "",
 
-    [switch] $Continue
+    [switch] $Continue,
+
+    [switch] $SkipRemoteTagCheck
 )
 
 $ErrorActionPreference = "Stop"
@@ -39,6 +41,9 @@ function Test-LocalTagExists {
 
 function Test-RemoteTagExists {
     param([string] $Tag)
+    if ($SkipRemoteTagCheck) {
+        return $false
+    }
     $output = & git ls-remote --tags $Remote $Tag
     if ($LASTEXITCODE -ne 0) {
         throw "Cannot query remote tags from $Remote. Check GitHub credentials and remote URL."
