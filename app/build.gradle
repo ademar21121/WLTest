@@ -7,6 +7,15 @@ android {
     compileSdk 36
     ndkVersion "30.0.14904198"
 
+    signingConfigs {
+        debug {
+            storeFile file("../keystore/wltest-debug.keystore")
+            storePassword "wltestdebug"
+            keyAlias "wltest-debug"
+            keyPassword "wltestdebug"
+        }
+    }
+
     defaultConfig {
         applicationId "com.wltest"
         minSdk 26
@@ -22,6 +31,12 @@ android {
             cmake {
                 arguments "-DANDROID_STL=c++_static"
             }
+        }
+    }
+
+    buildTypes {
+        debug {
+            signingConfig signingConfigs.debug
         }
     }
 

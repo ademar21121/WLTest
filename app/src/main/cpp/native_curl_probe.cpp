@@ -102,9 +102,8 @@ curl_socket_t OpenSocketCallback(void* clientp, curlsocktype /* purpose */, curl
   if (state != nullptr && state->network_handle != 0) {
     const int bind_result = android_setsocknetwork(state->network_handle, socket_fd);
     if (bind_result != 0) {
-      state->error = "android_setsocknetwork failed: " + std::to_string(bind_result);
-      close(socket_fd);
-      return CURL_SOCKET_BAD;
+      state->error = "android_setsocknetwork failed: " + std::string(std::strerror(errno))
+          + " (" + std::to_string(errno) + ")";
     }
   }
 
@@ -167,11 +166,10 @@ CurlExecutionResult ExecuteRequest(
   const bool use_android_network_binding = socket_bind_state.network_handle != 0;
 
   curl_easy_setopt(handle, CURLOPT_URL, url.c_str());
+  curl_easy_setopt(handle, CURLOPT_INTERFACE, interface_option.c_str());
   if (use_android_network_binding) {
     curl_easy_setopt(handle, CURLOPT_OPENSOCKETFUNCTION, OpenSocketCallback);
     curl_easy_setopt(handle, CURLOPT_OPENSOCKETDATA, &socket_bind_state);
-  } else {
-    curl_easy_setopt(handle, CURLOPT_INTERFACE, interface_option.c_str());
   }
   curl_easy_setopt(handle, CURLOPT_FOLLOWLOCATION, follow_redirects ? 1L : 0L);
   curl_easy_setopt(handle, CURLOPT_NOSIGNAL, 1L);
@@ -211,7 +209,7 @@ CurlExecutionResult ExecuteRequest(
   if (result.error_buffer.empty() && result.curl_code != CURLE_OK) {
     result.error_buffer = curl_easy_strerror(result.curl_code);
   }
-  if (!socket_bind_state.error.empty()) {
+  if (!socket_bind_state.error.empty() && result.curl_code != CURLE_OK) {
     result.local_error = socket_bind_state.error;
   }
 

@@ -33,6 +33,8 @@ Remove-Item Env:ANDROID_PREFS_ROOT -ErrorAction SilentlyContinue
 
 В текущем проекте CMake загружает `curl` и `mbedtls` через `FetchContent`, поэтому при первой сборке нужен доступ к GitHub.
 
+Debug APK подписывается общим ключом `keystore/wltest-debug.keystore`, чтобы локальные сборки и APK из GitHub Release обновляли друг друга без конфликта подписи. Если на телефоне уже установлена сборка, подписанная старым локальным или GitHub debug-ключом, ее нужно один раз удалить и установить новую заново.
+
 ## Версии и GitHub Release
 
 Номер версии хранится в `gradle.properties`:
